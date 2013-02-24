@@ -5,6 +5,10 @@ Created on 14.04.2011
 @author: slush
 @licence: Public domain
 @version 0.5
+
+Modified to work with MPEX on 24.2.2013
+by @orkaa
+
 '''
 
 from optparse import OptionParser
@@ -14,6 +18,8 @@ import os
 import sys
 import urllib2
 import socket
+import requests
+import pickle
 
 try:
     import simplejson as json
@@ -22,72 +28,30 @@ except ImportError:
 
 from scid import ScidFile, ScidRecord
 
-BITCOINCHARTS_TRADES_URL = 'http://bitcoincharts.com/t/trades.csv'
-BITCOINCHARTS_SOCKET = ('bitcoincharts.com', 8002)
-
-def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
-    url = '%s?start=%s&end=99999999999999&symbol=%s' % (BITCOINCHARTS_TRADES_URL, from_timestamp, symbol)
-    #print url
-    req = urllib2.Request(url)
-    for line in urllib2.urlopen(req).read().split('\n'):
-        if not line:
-            continue
-        
-        line = line.split(',')
-        
-        try:
-            timestamp, price, volume = int(line[0]), float(line[1]), int(float(line[2])*10**volume_precision)
-            if log:
-                print symbol, datetime.datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
-            yield ScidRecord(datetime.datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
-        except ValueError:
-            print line
-            print "Corrupted data for symbol %s, skipping" % symbol
-        
-        
+MPEX_URL = 'http://ass.diler.si/token.php'
+MPEX_USER = 'test'
+MPEX_PASS = 'test'
         
 class ScidHandler(object):
-    def __init__(self, symbol, datadir, disable_history, volume_precision):
+    def __init__(self, symbol, datadir, volume_precision):
         self.symbol = symbol
         self.filename = os.path.join(datadir, "%s.scid" % symbol)
         self.volume_precision = volume_precision
         self.load()
-        if not disable_history:
-            try:
-                self.download_historical()
-            except Exception as e:
-                # We don't want to continue; if we receive new data from live feed,
-                # gap inside scid file won't be filled anymore, so we must wait
-                # until historical feed is available again 
-                raise Exception("Historical download failed: %s, use -y to disable history" % str(e))
         
     def load(self):
         print 'Loading data file', self.filename
-        if os.path.exists(self.filename):
+        if os.path.exists(self.filename) and os.path.exists(mpex_id_filename):
             self.scid = ScidFile()
             self.scid.load(self.filename)
         else:
-            self.scid = ScidFile.create(self.filename)    
+            self.scid = ScidFile.create(self.filename)
+            pickle.dump( 0, open(mpex_id_filename, "wb" ))
         self.scid.seek(self.scid.length)
-        
-    def download_historical(self):
-        length = self.scid.length
-        
-        if not length:
-            from_timestamp = 0
-        else:
-            self.scid.seek(self.scid.length-1)
-            rec = ScidRecord.from_struct(self.scid.readOne())
-            from_timestamp = int(time.mktime(rec.DateTime.timetuple())) + 1
-            
-        print 'Downloading historical data'
-        self.scid.seek(self.scid.length)
-        for rec in bitcoincharts_history(self.symbol, from_timestamp, self.volume_precision, True):
-            self.scid.write(rec.to_struct())
-        self.scid.fp.flush()
          
-    def ticker_update(self, data):        
-        price = float(data['price'])
+    def ticker_update(self, data):
+        latest_id = int(data['id'])
+        price = float(data['price']) / 100000000
         volume = int(float(data['volume'])*10**self.volume_precision)
         date = datetime.datetime.fromtimestamp(float(data['timestamp']))
         
@@ -98,6 +62,7 @@ class ScidHandler(object):
             rec = ScidRecord(date, price, price, price, price, 1, volume, 0, 0)
             self.scid.write(rec.to_struct())
             self.scid.fp.flush()
+            pickle.dump( latest_id, open(mpex_id_filename, "wb" ))
         except Exception as e:
             print str(e)
   
@@ -119,20 +84,30 @@ def linesplit(sock):
             yield line
 
 class ScidLoader(dict):
-    def __init__(self, datadir, disable_history, volume_precision):
+    def __init__(self, datadir, volume_precision):
         super(ScidLoader, self).__init__() # Don't use any template dict
         
         self.datadir = datadir
-        self.disable_history = disable_history
         self.volume_precision = volume_precision
         
     def __getitem__(self, symbol):
         try:
             return dict.__getitem__(self, symbol)
         except KeyError:
-            handler = ScidHandler(symbol, self.datadir, self.disable_history, self.volume_precision)
+            handler = ScidHandler(symbol, self.datadir, self.volume_precision)
             self[symbol] = handler
             return handler
+
+def auth(latest_id):
+    auth = {'user': MPEX_USER, 'pass': MPEX_PASS, 'start': latest_id}
+    r = requests.post(MPEX_URL, data=auth).json()
+    if r.has_key('error'):
+        raise Exception(r['error'])
+    else:
+        token = r['token']
+        socket = (r['socket'], int(r['port']))
+        return token, socket
+
          
 if __name__ == '__main__':
     parser = OptionParser()
@@ -142,7 +117,7 @@ if __name__ == '__main__':
                   help="Disable downloads from bitcoincharts.com")
     parser.add_option("-p", "--volume-precision", default=2, dest="precision", type="int",
                   help="Change decimal precision for market volume.")
-    parser.add_option("-s", "--symbols", dest='symbols', default='mtgoxUSD,*',
+    parser.add_option("-s", "--symbols", dest='symbols', default='*',
                   help="Charts to watch, comma separated. Use * for streaming all markets.")
 
     (options, args) = parser.parse_args()
@@ -153,7 +128,9 @@ if __name__ == '__main__':
 
     # Symbols to watch    
     symbols = options.symbols.split(',')
-    scids = ScidLoader(options.datadir, options.disable_history, options.precision)
+    scids = ScidLoader(options.datadir, options.precision)
+
+    mpex_id_filename = os.path.join(options.datadir, "MPEX_ID")
             
     for s in symbols:
         if s != '*':
@@ -161,38 +138,41 @@ if __name__ == '__main__':
         
     while True:
         try:
+            if options.disable_history:
+                latest_id = -1
+            else:
+                latest_id = pickle.load(open(mpex_id_filename, "rb" ))
+            token, sock = auth(latest_id)
             print "Opening streaming socket..."
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(1)
-            s.connect(BITCOINCHARTS_SOCKET)
+            s.connect(sock)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            s.send("{\"action\": \"subscribe\", \"channel\": \"tick\"}\n")
+            s.send("%s\n" % token)
             
             for line in linesplit(s):
                 rec = json.loads(line)
-                if not rec['channel'].startswith('tick.'):
-                    # Not a tick data
-                    continue
-                
-                symbol = rec['channel'].rsplit('.')[1]
+
+                symbol = rec['symbol']
                 if symbol not in symbols and '*' not in symbols:
                     # Filtering out symbols which user don't want to store
                     # If '*' is in symbols, don't filter anything
                     continue
-                
-                #print "%s: %s" % (symbol, rec['payload'])
-                scids[symbol].ticker_update(rec['payload'])
+                scids[symbol].ticker_update(rec)
 
         except KeyboardInterrupt:
             print "Ctrl+C detected..."
             break
-        except Exception as e:
-            print "%s, retrying..." % str(e)
-            time.sleep(5)
-            continue
+        # except Exception as e:
+        #     print "%s, retrying..." % str(e)
+        #     time.sleep(5)
+        #     continue
         finally:
             print "Stopping streaming socket..."
-            s.close()
+            try:
+                s.close()
+            except:
+                pass
     
     for scid in scids.values():
         scid.scid.close()
