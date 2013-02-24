@@ -164,10 +164,10 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print "Ctrl+C detected..."
             break
-        # except Exception as e:
-        #     print "%s, retrying..." % str(e)
-        #     time.sleep(5)
-        #     continue
+        except Exception as e:
+            print "%s, retrying..." % str(e)
+            time.sleep(5)
+            continue
         finally:
             print "Stopping streaming socket..."
             try:
