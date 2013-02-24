@@ -41,12 +41,11 @@ class ScidHandler(object):
         
     def load(self):
         print 'Loading data file', self.filename
-        if os.path.exists(self.filename) and os.path.exists(mpex_id_filename):
+        if os.path.exists(self.filename):
             self.scid = ScidFile()
             self.scid.load(self.filename)
         else:
             self.scid = ScidFile.create(self.filename)
-            pickle.dump( 0, open(mpex_id_filename, "wb" ))
         self.scid.seek(self.scid.length)
          
     def ticker_update(self, data):
@@ -131,6 +130,8 @@ if __name__ == '__main__':
     scids = ScidLoader(options.datadir, options.precision)
 
     mpex_id_filename = os.path.join(options.datadir, "MPEX_ID")
+    if not os.path.exists(mpex_id_filename):
+        pickle.dump( 0, open(mpex_id_filename, "wb" ))
             
     for s in symbols:
         if s != '*':
