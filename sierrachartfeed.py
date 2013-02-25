@@ -171,9 +171,10 @@ if __name__ == '__main__':
         finally:
             print "Stopping streaming socket..."
             try:
-                s.close()
-            except:
+                s.send("BYE")
+            except socket.error:
                 pass
-    
+            s.close()
+            
     for scid in scids.values():
         scid.scid.close()
