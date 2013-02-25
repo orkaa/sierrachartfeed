@@ -29,9 +29,7 @@ except ImportError:
 from scid import ScidFile, ScidRecord
 
 MPEX_URL = 'http://ass.diler.si/token.php'
-MPEX_USER = 'test'
-MPEX_PASS = 'test'
-        
+
 class ScidHandler(object):
     def __init__(self, symbol, datadir, volume_precision):
         self.symbol = symbol
@@ -98,7 +96,7 @@ class ScidLoader(dict):
             return handler
 
 def auth(latest_id):
-    auth = {'user': MPEX_USER, 'pass': MPEX_PASS, 'start': latest_id}
+    auth = {'user': options.MPEX_USER, 'pass': options.MPEX_PASS, 'start': latest_id}
     r = requests.post(MPEX_URL, data=auth).json()
     if r.has_key('error'):
         raise Exception(r['error'])
@@ -114,12 +112,21 @@ if __name__ == '__main__':
                   help="Data directory of SierraChart software")
     parser.add_option("-y", "--disable-history", action='store_true', default=False,
                   help="Disable downloads from bitcoincharts.com")
-    parser.add_option("-p", "--volume-precision", default=2, dest="precision", type="int",
+    parser.add_option("--volume-precision", default=2, dest="precision", type="int",
                   help="Change decimal precision for market volume.")
     parser.add_option("-s", "--symbols", dest='symbols', default='*',
                   help="Charts to watch, comma separated. Use * for streaming all markets.")
+    parser.add_option("-u", "--user", dest='MPEX_USER',
+                  help="Username")
+    parser.add_option("-p", "--password", dest='MPEX_PASS',
+                  help="Password")
 
     (options, args) = parser.parse_args()
+
+    if not options.MPEX_USER:
+        parser.error('Provide an username with: -u <user>')
+    if not options.MPEX_PASS:
+        parser.error('Provide an username with: -p <password>')
 
     if options.precision < 0 or options.precision > 8:
         print "Precision must be between 0 and 8"
