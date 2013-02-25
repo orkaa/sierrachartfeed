@@ -102,8 +102,8 @@ def auth(latest_id):
         raise Exception(r['error'])
     else:
         token = r['token']
-        socket = (r['socket'], int(r['port']))
-        return token, socket
+        mpex_socket = (r['socket'], int(r['port']))
+        return token, mpex_socket
 
          
 if __name__ == '__main__':
@@ -123,11 +123,10 @@ if __name__ == '__main__':
 
     (options, args) = parser.parse_args()
 
-    if not options.MPEX_USER:
-        parser.error('Provide an username with: -u <user>')
-    if not options.MPEX_PASS:
-        parser.error('Provide an username with: -p <password>')
-
+    if not options.MPEX_USER or not options.MPEX_PASS:
+        print("Please login with: -u <user> -p <password>")
+        sys.exit()
+    
     if options.precision < 0 or options.precision > 8:
         print "Precision must be between 0 and 8"
         sys.exit()
@@ -150,15 +149,18 @@ if __name__ == '__main__':
                 latest_id = -1
             else:
                 latest_id = pickle.load(open(mpex_id_filename, "rb" ))
-            token, sock = auth(latest_id)
+
             print "Opening streaming socket..."
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(1)
-            s.connect(sock)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            s.send("%s\n" % token)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+            token, mpex_socket = auth(latest_id)
+
+            sock.settimeout(1)
+            sock.connect(mpex_socket)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.send("%s\n" % token)
             
-            for line in linesplit(s):
+            for line in linesplit(sock):
                 rec = json.loads(line)
 
                 symbol = rec['symbol']
@@ -178,10 +180,10 @@ if __name__ == '__main__':
         finally:
             print "Stopping streaming socket..."
             try:
-                s.send("BYE")
+                sock.send("BYE")
             except socket.error:
                 pass
-            s.close()
+            sock.close()
             
     for scid in scids.values():
         scid.scid.close()
