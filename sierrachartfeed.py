@@ -99,7 +99,7 @@ def auth(latest_id):
     auth = {'user': options.MPEX_USER, 'pass': options.MPEX_PASS, 'start': latest_id}
     r = requests.post(MPEX_URL, data=auth).json()
     if r.has_key('error'):
-        if r['error'] == "Invalid login.":
+        if r['error'] in ("Invalid login.", "Missing user or pass."):
             sys.exit(r['error'])
         raise Exception(r['error'])
     else:
