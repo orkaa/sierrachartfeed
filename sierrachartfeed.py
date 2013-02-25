@@ -99,6 +99,8 @@ def auth(latest_id):
     auth = {'user': options.MPEX_USER, 'pass': options.MPEX_PASS, 'start': latest_id}
     r = requests.post(MPEX_URL, data=auth).json()
     if r.has_key('error'):
+        if r['error'] == "Invalid login.":
+            sys.exit(r['error'])
         raise Exception(r['error'])
     else:
         token = r['token']
@@ -123,9 +125,10 @@ if __name__ == '__main__':
 
     (options, args) = parser.parse_args()
 
-    if not options.MPEX_USER or not options.MPEX_PASS:
-        print("Please login with: -u <user> -p <password>")
-        sys.exit()
+    if not options.MPEX_USER:
+        options.MPEX_USER = raw_input("User: ")
+    if not options.MPEX_PASS:
+        options.MPEX_PASS = raw_input("Password: ")
     
     if options.precision < 0 or options.precision > 8:
         print "Precision must be between 0 and 8"
