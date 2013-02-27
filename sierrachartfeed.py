@@ -28,7 +28,7 @@ except ImportError:
 
 from scid import ScidFile, ScidRecord
 
-MPEX_URL = 'http://ass.diler.si/token.php'
+MPEX_URL = 'https://sauth.bitcoin-assets.com/'
 
 class ScidHandler(object):
     def __init__(self, symbol, datadir, volume_precision):
@@ -97,7 +97,7 @@ class ScidLoader(dict):
 
 def auth(latest_id):
     auth = {'user': options.MPEX_USER, 'pass': options.MPEX_PASS, 'start': latest_id}
-    r = requests.post(MPEX_URL, data=auth).json()
+    r = requests.post(MPEX_URL, verify=False, data=auth).json()
     if r.has_key('error'):
         if r['error'] in ("Invalid login.", "Missing user or pass."):
             sys.exit(r['error'])
